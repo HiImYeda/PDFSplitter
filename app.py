@@ -5,6 +5,8 @@ import logging
 from io import BytesIO
 from flask import Flask, request, jsonify, render_template
 from PyPDF2 import PdfReader, PdfWriter
+from pdf2image import convert_from_bytes
+from PIL import Image
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -94,7 +96,18 @@ def split_pdf():
                 "error": "PDF file contains no pages"
             }), 400
         
-        # Split PDF into individual pages
+        # Convert PDF to images first
+        try:
+            images = convert_from_bytes(pdf_data, dpi=200, fmt='PNG')
+            logging.debug(f"Successfully converted PDF to {len(images)} images")
+        except Exception as e:
+            logging.error(f"Error converting PDF to images: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": f"Error converting PDF to images: {str(e)}"
+            }), 500
+
+        # Split PDF into individual pages and convert to images
         pages_data = []
         
         for page_num, page in enumerate(pdf_reader.pages, 1):
@@ -111,9 +124,19 @@ def split_pdf():
                 # Encode the page as base64
                 page_base64 = base64.b64encode(page_buffer.getvalue()).decode('utf-8')
                 
+                # Convert corresponding image to base64
+                image_base64 = None
+                if page_num <= len(images):
+                    image = images[page_num - 1]  # 0-indexed
+                    image_buffer = BytesIO()
+                    image.save(image_buffer, format='PNG')
+                    image_buffer.seek(0)
+                    image_base64 = base64.b64encode(image_buffer.getvalue()).decode('utf-8')
+                
                 pages_data.append({
                     "page_number": page_num,
-                    "base64": page_base64
+                    "pdf_base64": page_base64,
+                    "image_base64": image_base64
                 })
                 
                 logging.debug(f"Successfully processed page {page_num}")

@@ -129,25 +129,44 @@ class PDFSplitter {
         const col = document.createElement('div');
         col.className = 'col-md-6 col-lg-4 mb-3';
 
+        const imagePreview = page.image_base64 ? 
+            `<img src="data:image/png;base64,${page.image_base64}" class="card-img-top" style="height: 200px; object-fit: contain; background-color: white;" alt="Page ${page.page_number} preview">` : 
+            `<div class="card-img-top d-flex align-items-center justify-content-center" style="height: 200px; background-color: #f8f9fa;">
+                <i class="fas fa-file-pdf fa-3x text-muted"></i>
+            </div>`;
+
         col.innerHTML = `
             <div class="card h-100">
+                ${imagePreview}
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="card-title mb-0">
                         <i class="fas fa-file-pdf me-2"></i>
                         Page ${page.page_number}
                     </h6>
-                    <span class="badge bg-secondary">${this.formatFileSize(page.base64)}</span>
+                    <span class="badge bg-secondary">${this.formatFileSize(page.pdf_base64 || page.base64)}</span>
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <button class="btn btn-outline-primary btn-sm" onclick="pdfSplitter.downloadPage(${page.page_number}, '${page.base64}')">
+                        <button class="btn btn-outline-primary btn-sm" onclick="pdfSplitter.downloadPage(${page.page_number}, '${page.pdf_base64 || page.base64}')">
                             <i class="fas fa-download me-2"></i>
                             Download PDF
                         </button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="pdfSplitter.copyBase64('${page.base64}')">
-                            <i class="fas fa-copy me-2"></i>
-                            Copy Base64
+                        ${page.image_base64 ? `
+                        <button class="btn btn-outline-success btn-sm" onclick="pdfSplitter.downloadImage(${page.page_number}, '${page.image_base64}')">
+                            <i class="fas fa-image me-2"></i>
+                            Download PNG
                         </button>
+                        ` : ''}
+                        <button class="btn btn-outline-secondary btn-sm" onclick="pdfSplitter.copyBase64('${page.pdf_base64 || page.base64}')">
+                            <i class="fas fa-copy me-2"></i>
+                            Copy PDF Base64
+                        </button>
+                        ${page.image_base64 ? `
+                        <button class="btn btn-outline-info btn-sm" onclick="pdfSplitter.copyBase64('${page.image_base64}')">
+                            <i class="fas fa-image me-2"></i>
+                            Copy Image Base64
+                        </button>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -177,10 +196,38 @@ class PDFSplitter {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            this.showAlert(`Page ${pageNumber} downloaded successfully!`, 'success');
+            this.showAlert(`PDF da página ${pageNumber} baixado com sucesso!`, 'success');
         } catch (error) {
             console.error('Error downloading page:', error);
-            this.showAlert(`Error downloading page ${pageNumber}: ${error.message}`, 'danger');
+            this.showAlert(`Erro ao baixar página ${pageNumber}: ${error.message}`, 'danger');
+        }
+    }
+
+    downloadImage(pageNumber, base64Data) {
+        try {
+            // Convert base64 to blob
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'image/png' });
+
+            // Create download link
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `page_${pageNumber}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            this.showAlert(`Imagem da página ${pageNumber} baixada com sucesso!`, 'success');
+        } catch (error) {
+            console.error('Error downloading image:', error);
+            this.showAlert(`Erro ao baixar imagem da página ${pageNumber}: ${error.message}`, 'danger');
         }
     }
 
