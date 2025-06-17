@@ -1,0 +1,28 @@
+# FastAPI Framework e servidor
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Validação e processamento de dados
+email-validator>=2.2.0
+python-multipart>=0.0.12
+pydantic>=2.0.0
+
+# Processamento de PDFs
+pdf2image>=1.17.0
+pypdf2>=3.0.1
+xhtml2pdf>=0.2.17
+
+# Processamento de imagens
+pillow>=11.2.1
+
+# Templates e autenticação
+jinja2>=3.1.4
+python-jose[cryptography]>=3.3.0
+
+# Utilitários
+requests>=2.31.0
+
+# Dependências para desenvolvimento (opcional)
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# httpx>=0.24.0 
