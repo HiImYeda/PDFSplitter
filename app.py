@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify, render_template
 from PyPDF2 import PdfReader, PdfWriter
 from pdf2image import convert_from_bytes
 from PIL import Image
+from xhtml2pdf import pisa
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -160,6 +161,150 @@ def split_pdf():
         
     except Exception as e:
         logging.error(f"Unexpected error in split_pdf: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+@app.route('/api/html-to-pdf', methods=['POST'])
+def html_to_pdf():
+    """
+    API endpoint to convert HTML to PDF and return base64-encoded PDF and images.
+    
+    Expected JSON payload:
+    {
+        "html_content": "html-string-content"
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "pdf_base64": "base64-encoded-pdf-data",
+        "pages": [
+            {
+                "page_number": 1,
+                "image_base64": "base64-encoded-page-image-data"
+            },
+            ...
+        ],
+        "total_pages": N
+    }
+    """
+    try:
+        # Validate request content type
+        if not request.is_json:
+            return jsonify({
+                "success": False,
+                "error": "Content-Type must be application/json"
+            }), 400
+        
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data or 'html_content' not in data:
+            return jsonify({
+                "success": False,
+                "error": "Missing 'html_content' field in request body"
+            }), 400
+        
+        html_content = data['html_content']
+        
+        if not html_content:
+            return jsonify({
+                "success": False,
+                "error": "'html_content' field cannot be empty"
+            }), 400
+        
+        # Convert HTML to PDF using xhtml2pdf
+        try:
+            logging.debug("Converting HTML to PDF...")
+            pdf_buffer = BytesIO()
+            
+            # Create PDF from HTML
+            pisa_status = pisa.CreatePDF(
+                src=html_content,
+                dest=pdf_buffer
+            )
+            
+            if pisa_status.err:
+                logging.error(f"xhtml2pdf error: {pisa_status.err}")
+                return jsonify({
+                    "success": False,
+                    "error": "Error converting HTML to PDF"
+                }), 400
+            
+            # Get PDF bytes
+            pdf_buffer.seek(0)
+            pdf_data = pdf_buffer.getvalue()
+            pdf_buffer.close()
+            
+            if len(pdf_data) == 0:
+                return jsonify({
+                    "success": False,
+                    "error": "Generated PDF is empty"
+                }), 400
+            
+            # Encode PDF as base64
+            pdf_base64 = base64.b64encode(pdf_data).decode('utf-8')
+            
+            logging.debug(f"Successfully converted HTML to PDF ({len(pdf_data)} bytes)")
+            
+        except Exception as e:
+            logging.error(f"HTML to PDF conversion error: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": f"Error converting HTML to PDF: {str(e)}"
+            }), 500
+        
+        # Convert PDF to images for each page
+        try:
+            images = convert_from_bytes(pdf_data, dpi=200, fmt='PNG')
+            logging.debug(f"Successfully converted PDF to {len(images)} images")
+        except Exception as e:
+            logging.error(f"Error converting PDF to images: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": f"Error converting PDF to images: {str(e)}"
+            }), 500
+        
+        # Process each page image
+        pages_data = []
+        
+        for page_num, image in enumerate(images, 1):
+            try:
+                # Convert image to base64
+                image_buffer = BytesIO()
+                image.save(image_buffer, format='PNG')
+                image_buffer.seek(0)
+                image_base64 = base64.b64encode(image_buffer.getvalue()).decode('utf-8')
+                
+                pages_data.append({
+                    "page_number": page_num,
+                    "image_base64": image_base64
+                })
+                
+                logging.debug(f"Successfully processed page {page_num} image")
+                
+            except Exception as e:
+                logging.error(f"Error processing page {page_num} image: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Error processing page {page_num} image: {str(e)}"
+                }), 500
+        
+        # Return successful response
+        response = {
+            "success": True,
+            "pdf_base64": pdf_base64,
+            "pages": pages_data,
+            "total_pages": len(pages_data)
+        }
+        
+        logging.info(f"Successfully converted HTML to PDF with {len(pages_data)} pages")
+        return jsonify(response)
+        
+    except Exception as e:
+        logging.error(f"Unexpected error in html_to_pdf: {str(e)}")
         return jsonify({
             "success": False,
             "error": f"Internal server error: {str(e)}"

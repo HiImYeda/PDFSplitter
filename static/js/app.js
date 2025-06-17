@@ -11,6 +11,9 @@ class PDFSplitter {
         this.fileInput = document.getElementById('pdfFile');
         this.splitBtn = document.getElementById('splitBtn');
         this.clearBtn = document.getElementById('clearBtn');
+        this.htmlContent = document.getElementById('htmlContent');
+        this.convertBtn = document.getElementById('convertBtn');
+        this.clearHtmlBtn = document.getElementById('clearHtmlBtn');
         this.progressContainer = document.getElementById('progressContainer');
         this.progressBar = document.getElementById('progressBar');
         this.alertContainer = document.getElementById('alertContainer');
@@ -22,6 +25,9 @@ class PDFSplitter {
         this.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
         this.splitBtn.addEventListener('click', () => this.splitPDF());
         this.clearBtn.addEventListener('click', () => this.clearAll());
+        this.htmlContent.addEventListener('input', (e) => this.handleHtmlInput(e));
+        this.convertBtn.addEventListener('click', () => this.convertHtmlToPdf());
+        this.clearHtmlBtn.addEventListener('click', () => this.clearHtml());
     }
 
     handleFileSelect(event) {
@@ -54,6 +60,184 @@ class PDFSplitter {
         this.clearBtn.disabled = false;
         this.clearAlert();
         this.hideResults();
+    }
+
+    handleHtmlInput(event) {
+        const htmlContent = event.target.value.trim();
+        this.convertBtn.disabled = htmlContent.length === 0;
+        
+        if (htmlContent.length > 0) {
+            this.clearAlert();
+            this.hideResults();
+        }
+    }
+
+    async convertHtmlToPdf() {
+        const htmlContent = this.htmlContent.value.trim();
+        
+        if (!htmlContent) {
+            this.showAlert('Por favor, digite o conteúdo HTML primeiro.', 'warning');
+            return;
+        }
+
+        try {
+            // Show progress
+            this.showProgress();
+            this.convertBtn.disabled = true;
+
+            // Make API request
+            const response = await fetch('/api/html-to-pdf', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    html_content: htmlContent
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showAlert(
+                    `HTML convertido com sucesso para PDF com ${result.total_pages} página(s)!`, 
+                    'success'
+                );
+                this.displayHtmlToPdfResults(result);
+            } else {
+                this.showAlert(`Erro: ${result.error}`, 'danger');
+            }
+
+        } catch (error) {
+            console.error('Error converting HTML to PDF:', error);
+            this.showAlert(`Erro: ${error.message}`, 'danger');
+        } finally {
+            this.hideProgress();
+            this.convertBtn.disabled = false;
+        }
+    }
+
+    displayHtmlToPdfResults(result) {
+        this.resultsSection.style.display = 'block';
+        this.pagesContainer.innerHTML = '';
+
+        // Add PDF download card first
+        const pdfCard = this.createPdfDownloadCard(result.pdf_base64);
+        this.pagesContainer.appendChild(pdfCard);
+
+        // Add individual page images
+        if (result.pages && result.pages.length > 0) {
+            result.pages.forEach(page => {
+                const pageCard = this.createHtmlPageCard(page);
+                this.pagesContainer.appendChild(pageCard);
+            });
+        }
+    }
+
+    createPdfDownloadCard(pdfBase64) {
+        const col = document.createElement('div');
+        col.className = 'col-md-6 col-lg-4 mb-3';
+
+        col.innerHTML = `
+            <div class="card h-100 border-success">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-file-pdf me-2"></i>
+                        PDF Completo
+                    </h6>
+                    <span class="badge bg-light text-dark">${this.formatFileSize(pdfBase64)}</span>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">Arquivo PDF gerado a partir do HTML fornecido.</p>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success" onclick="pdfSplitter.downloadPdf('${pdfBase64}')">
+                            <i class="fas fa-download me-2"></i>
+                            Baixar PDF Completo
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="pdfSplitter.copyBase64('${pdfBase64}')">
+                            <i class="fas fa-copy me-2"></i>
+                            Copiar Base64 do PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        return col;
+    }
+
+    createHtmlPageCard(page) {
+        const col = document.createElement('div');
+        col.className = 'col-md-6 col-lg-4 mb-3';
+
+        const imagePreview = page.image_base64 ? 
+            `<img src="data:image/png;base64,${page.image_base64}" class="card-img-top" style="height: 200px; object-fit: contain; background-color: white;" alt="Page ${page.page_number} preview">` : 
+            `<div class="card-img-top d-flex align-items-center justify-content-center" style="height: 200px; background-color: #f8f9fa;">
+                <i class="fas fa-image fa-3x text-muted"></i>
+            </div>`;
+
+        col.innerHTML = `
+            <div class="card h-100">
+                ${imagePreview}
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-image me-2"></i>
+                        Página ${page.page_number}
+                    </h6>
+                    <span class="badge bg-secondary">${this.formatFileSize(page.image_base64)}</span>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-success btn-sm" onclick="pdfSplitter.downloadImage(${page.page_number}, '${page.image_base64}')">
+                            <i class="fas fa-download me-2"></i>
+                            Baixar PNG
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="pdfSplitter.copyBase64('${page.image_base64}')">
+                            <i class="fas fa-copy me-2"></i>
+                            Copiar Base64
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        return col;
+    }
+
+    downloadPdf(base64Data) {
+        try {
+            // Convert base64 to blob
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'application/pdf' });
+
+            // Create download link
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `html-to-pdf.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            this.showAlert('PDF baixado com sucesso!', 'success');
+        } catch (error) {
+            console.error('Error downloading PDF:', error);
+            this.showAlert(`Erro ao baixar PDF: ${error.message}`, 'danger');
+        }
+    }
+
+    clearHtml() {
+        this.htmlContent.value = '';
+        this.convertBtn.disabled = true;
+        this.clearAlert();
+        this.hideResults();
+        this.showAlert('Conteúdo HTML limpo com sucesso.', 'info');
     }
 
     async splitPDF() {
